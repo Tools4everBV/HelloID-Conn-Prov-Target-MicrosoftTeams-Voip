@@ -58,13 +58,13 @@ This connector enables automatic provisioning and management of Teams telephony 
 
 Because every implementation requires customization, this repository includes example implementations to help you get started:
 
-- **Main Branch (Recommended Starting Point)**<br>
+- **Main Branch (Recommended Starting Point)**
   The standard connector in the main branch manages CallingLineIdentity policies based on department IDs. This provides a solid framework that you can extend with additional functionality based on your specific requirements.
 
-- **Example-v1 Folder**<br>
+- **Example-v1 Folder**
   Contains the legacy v1 connector with its own functionality. While this connector is no longer actively maintained and cannot be deployed as-is, it can provide valuable insights and ideas for implementing specific features in the current v2 connector.
 
-- **AdvancedExample Folder**<br>
+- **AdvancedExample Folder**
   Demonstrates a more complex v2 implementation that includes database connectivity for additional data lookups and advanced policy management scenarios.
 
 > [!TIP]
@@ -89,26 +89,26 @@ The following features are available:
 
 This connector requires the following prerequisites:
 
-- **Microsoft Teams PowerShell Module**:<br>
+- **Microsoft Teams PowerShell Module**
   The MicrosoftTeams PowerShell module (version 5.7.1 or higher) must be installed and available on the HelloID agent. Please see the [Microsoft documentation](https://learn.microsoft.com/en-us/microsoftteams/teams-powershell-install) for installation instructions. The module [can be found here](https://www.powershellgallery.com/packages/MicrosoftTeams). The connector will automatically import the required cmdlets (`Get-CsOnlineUser`, `Get-CsPhoneNumberAssignment`, `Set-CsPhoneNumberAssignment`, `Get-CsCallingLineIdentity`, `Grant-CsCallingLineIdentity`).
 
-- **On-Premises Agent Required**:<br>
+- **On-Premises Agent Required**
   This connector is required to run on an **On-Premises** HelloID agent, as it is not allowed to import PowerShell modules with the Cloud Agent.
 
-- **Microsoft Entra ID App Registration**:<br>
+- **Microsoft Entra ID App Registration**
   An App Registration in Microsoft Entra ID is required with the following configuration:
   - Application (client) ID
   - Directory (tenant) ID
   - Client certificate (Base64 encoded PFX/PKCS#12) with private key
   - Certificate password
   
-- **App Registration Permissions**:<br>
+- **App Registration Permissions**
   The App Registration requires the following Microsoft Graph API permissions as **Application permissions**:
   - **Organization.Read.All** - Read organization information
   
   To grant admin consent to the application, navigate to **Microsoft Entra Portal > Microsoft Entra ID > App Registrations > [Your App] > API Permissions** and press the "**Grant admin consent for [TENANT]**" button.
 
-- **Microsoft Entra ID Role Assignment**:<br>
+- **Microsoft Entra ID Role Assignment**
   The App Registration must be assigned the **Teams Communications Administrator** role (or Global Administrator for more extensive permissions). This role provides the required permissions to manage Teams calling settings. To assign the role:
   - Navigate to **Microsoft Entra Portal > Microsoft Entra ID > Roles and administrators**
   - Select "**Teams Communications Administrator**"
@@ -117,10 +117,10 @@ This connector requires the following prerequisites:
   
   For more information, see [Application-based authentication in Teams PowerShell Module](https://learn.microsoft.com/en-us/microsoftteams/teams-powershell-application-authentication#setup-application-based-authentication) and [Use Microsoft Teams administrator roles](https://learn.microsoft.com/en-us/microsoftteams/using-admin-roles).
 
-- **Teams Phone License**:<br>
+- **Teams Phone License**
   Users must have a Microsoft Teams Phone System license (MCOEV) assigned. The connector validates this before making any changes.
 
-- **CallingLineIdentity Policies**:<br>
+- **CallingLineIdentity Policies**
   CallingLineIdentity policies must be preconfigured in Microsoft Teams with their Description field matching the department IDs from your source system.
 
 ### Connection settings
