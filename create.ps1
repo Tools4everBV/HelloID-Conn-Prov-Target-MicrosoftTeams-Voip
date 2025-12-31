@@ -1,418 +1,263 @@
-#####################################################
-# HelloID-Conn-Prov-Target-MicrosoftTeams-DirectRoutingPhonenumber-Create
-#
-# Version: 1.0.0
-#####################################################
-# Initialize default values
-$c = $configuration | ConvertFrom-Json
-$p = $person | ConvertFrom-Json
-$success = $false # Set to false at start, at the end, only when no error occurs it is set to true
-$auditLogs = [System.Collections.Generic.List[PSCustomObject]]::new()
+#################################################
+# HelloID-Conn-Prov-Target-MicrosoftTeams-Voip-Create
+# PowerShell V2
+#################################################
 
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($($c.isDebug)) {
-    $true { $VerbosePreference = "Continue" }
-    $false { $VerbosePreference = "SilentlyContinue" }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
-# Used to connect to Microsoft Teams in an unattended scripting scenario using an App ID and App Secret to create an Access Token.
-$microsoftEntraIDTenantId = $c.MicrosoftEntraIDTenantId
-$microsoftEntraIDAppID = $c.MicrosoftEntraIDAppId
-$microsoftEntraIDAppSecret = $c.MicrosoftEntraIDAppSecret
-$OnlySetPhoneNumberWhenEmpty = $c.OnlySetPhoneNumberWhenEmpty
-
-# PowerShell commands to import
-$commands = @(
-    "Get-CsPhoneNumberAssignment"
-    , "Set-CsPhoneNumberAssignment"
-)
-
-#region Change mapping here
-# The available account properties are linked to the available properties of the command "Set-CsPhoneNumberAssignment": https://learn.microsoft.com/en-us/powershell/module/teams/set-csphonenumberassignment?view=teams-ps command "https://learn.microsoft.com/en-us/powershell/module/teams/set-csphonenumberassignment?view=teams-ps", 
-# Phone numbers use the format "+<country code> <number>x<extension>", with extension optional.
-# For example, +1 5555551234 or +1 5555551234x123 are valid. Numbers are rejected when creating/updating if they do not match the required format. 
-# Phone numbers use the format "+<country code> <number>x<extension>", with extension optional.
-# For example, +1 5555551234 or +1 5555551234x123 are valid. Numbers are rejected when creating/updating if they do not match the required format. 
-$phoneNumber = $p.Contact.Business.Phone.Mobile
-if(-not($phoneNumber.StartsWith("+31"))){
-    $phoneNumber = "+31" + $phoneNumber
-}
-$account = [PSCustomObject]@{
-    Identity        = $p.Accounts.MicrosoftAzureAD.userPrincipalName
-    PhoneNumber     = $phoneNumber
-    PhoneNumberType = "DirectRouting"
-}
-
-# # Correlation values - Outcommented, as there is no correlation as there is no command to get the Teams User
-# $correlationProperty = "" # Has to match the name of the property that contains unique identifier
-# $correlationValue = "" # Has to match the value of the unique identifier property
-
-# Define account properties to update
-$updateAccountFields = @("PhoneNumber")
-
-# Define account properties to store in account data
-$storeAccountFields = @("PhoneNumber", "PhoneNumberType")
-#endregion Change mapping here
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 #region functions
-function Resolve-HTTPError {
+function Resolve-MicrosoftTeams-VoipError {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
     )
     process {
         $httpErrorObj = [PSCustomObject]@{
-            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
-            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
-            RequestUri            = $ErrorObject.TargetObject.RequestUri
-            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
-            ErrorMessage          = ""
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
         }
-        if ($ErrorObject.Exception.GetType().FullName -eq "Microsoft.PowerShell.Commands.HttpResponseException") {
-            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
         }
-        elseif ($ErrorObject.Exception.GetType().FullName -eq "System.Net.WebException") {
-            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                }
+            }
+        }
+        try {
+            $errorObjectConverted = $ErrorObject | ConvertFrom-Json -ErrorAction Stop
+
+            if ($null -ne $errorObjectConverted.error_description) {
+                $httpErrorObj.FriendlyMessage = $errorObjectConverted.error_description
+            }
+            elseif ($null -ne $errorObjectConverted.error) {
+                if ($null -ne $errorObjectConverted.error.message) {
+                    $httpErrorObj.FriendlyMessage = $errorObjectConverted.error.message
+                    if ($null -ne $errorObjectConverted.error.code) { 
+                        $httpErrorObj.FriendlyMessage = $httpErrorObj.FriendlyMessage + " Error code: $($errorObjectConverted.error.code)"
+                    }
+                }
+                else {
+                    $httpErrorObj.FriendlyMessage = $errorObjectConverted.error
+                }
+            }
+            else {
+                $httpErrorObj.FriendlyMessage = $ErrorObject
+            }
+        }
+        catch {
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
     }
 }
 
-function Get-ErrorMessage {
+function Import-ModuleIfNeeded {
     [CmdletBinding()]
-    param (
-        [Parameter(Mandatory,
-            ValueFromPipeline
-        )]
-        [object]$ErrorObject
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string[]]$Cmdlets
     )
-    process {
-        $errorMessage = [PSCustomObject]@{
-            VerboseErrorMessage = $null
-            AuditErrorMessage   = $null
+    try {
+        if ($Cmdlets) { 
+            Import-Module $Name -Cmdlet $Cmdlets -Verbose:$false -ErrorAction Stop
         }
-
-        if ( $($ErrorObject.Exception.GetType().FullName -eq "Microsoft.PowerShell.Commands.HttpResponseException") -or $($ErrorObject.Exception.GetType().FullName -eq "System.Net.WebException")) {
-            $httpErrorObject = Resolve-HTTPError -Error $ErrorObject
-
-            $errorMessage.VerboseErrorMessage = $httpErrorObject.ErrorMessage
-
-            $errorMessage.AuditErrorMessage = $httpErrorObject.ErrorMessage
+        else { 
+            Import-Module $Name -Verbose:$false -ErrorAction Stop
         }
-
-        # If error message empty, fall back on $ex.Exception.Message
-        if ([String]::IsNullOrEmpty($errorMessage.VerboseErrorMessage)) {
-            $errorMessage.VerboseErrorMessage = $ErrorObject.Exception.Message
-        }
-        if ([String]::IsNullOrEmpty($errorMessage.AuditErrorMessage)) {
-            $errorMessage.AuditErrorMessage = $ErrorObject.Exception.Message
-        }
-
-        Write-Output $errorMessage
+        Write-Information "Module [$Name] imported"
+    }
+    catch {
+        throw "Could not load module [$Name]. Error: $_"
     }
 }
-#endregion functions
+
+function New-OAuthTokenClientSecret {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$TenantId,
+        [Parameter(Mandatory)][string]$AppId,
+        [Parameter(Mandatory)][string]$ClientSecret,
+        [Parameter(Mandatory)][string]$ResourceAudience
+    )
+    try {
+        $body = @{
+            grant_type    = 'client_credentials'
+            client_id     = $AppId
+            client_secret = $ClientSecret
+            scope         = "$ResourceAudience/.default"
+        }
+        $uri = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+        $response = Invoke-RestMethod -Uri $uri -Method POST -Body $body -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop -Verbose:$false
+        Write-Output $response.access_token
+    }
+    catch {
+        Throw $_
+    }
+}
+
+function Connect-TeamsCertificate {
+    [CmdletBinding()]
+    param(
+        [string[]]$EnsureCmdlets = @(
+            'Get-CsOnlineUser',
+            'Get-CsPhoneNumberAssignment'
+        )
+    )
+    try {
+        # Load certificate from base64 string (no permanent import needed)
+        $rawCertificate = [System.Convert]::FromBase64String($actionContext.Configuration.AppCertificateBase64String)
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $actionContext.Configuration.AppCertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        $thumbprint = $certificate.Thumbprint
+
+        # Add certificate to CurrentUser\My store (required for Teams module)
+        $storeRead = [System.Security.Cryptography.X509Certificates.X509Store]::new("My", "CurrentUser")
+        $storeRead.Open("ReadOnly")
+        $existingCert = $storeRead.Certificates | Where-Object { $_.Thumbprint -eq $thumbprint }
+        $storeRead.Close()
+
+        # Only open for write if certificate doesn't exist yet
+        if ($null -eq $existingCert) {
+            $storeWrite = [System.Security.Cryptography.X509Certificates.X509Store]::new("My", "CurrentUser")
+            $storeWrite.Open("ReadWrite")
+            $storeWrite.Add($certificate)
+            $storeWrite.Close()
+        }
+
+        # Module + connect
+        Import-ModuleIfNeeded -Name 'MicrosoftTeams' -Cmdlets $EnsureCmdlets
+        $null = Connect-MicrosoftTeams -CertificateThumbprint $thumbprint -ApplicationId $actionContext.Configuration.AppId -TenantId $actionContext.Configuration.TenantId -ErrorAction Stop -Verbose:$false
+        Write-Information 'Connected to Microsoft Teams (certificate)'
+    }
+    catch {
+        Throw $_
+    }
+}
+#endregion
 
 try {
-    # Set aRef object for use in futher actions - Since there is no correlation as there is no command to get the Teams User, we use the Identity from the account object
-    $aRef = $account.Identity
+    # Initial Assignments
+    $actionMessage = 'Initialization'
+    $outputContext.AccountReference = 'Currently not available'
 
-    try {           
-        # Import module
-        $moduleName = "MicrosoftTeams"
+    # Validate correlation configuration
+    if ($actionContext.CorrelationConfiguration.Enabled) {
+        $correlationField = $actionContext.CorrelationConfiguration.AccountField
+        $correlationValue = $actionContext.CorrelationConfiguration.PersonFieldValue
 
-        # If module is imported say that and do nothing
-        if (Get-Module -Verbose:$false | Where-Object { $_.Name -eq $ModuleName }) {
-            Write-Verbose "Module [$ModuleName] is already imported."
+        if ([string]::IsNullOrEmpty($correlationField)) {
+            throw 'Correlation is enabled but not configured correctly'
+        }
+        if ([string]::IsNullOrEmpty($correlationValue)) {
+            throw 'Correlation is enabled but [accountFieldValue] is empty. Please make sure it is correctly mapped'
+        }
+        $actionMessage = "Connecting to Microsoft Teams"
+        $null = Connect-TeamsCertificate
+
+        $actionMessage = "Correlating account [$correlationValue] on field: [$($correlationField)] with value: [$($correlationValue)]"
+        $csOnlineUser = Get-CsOnlineUser -Identity $correlationValue -ErrorAction Stop
+        if (-not ($csOnlineUser.FeatureTypes -contains 'PhoneSystem' -or $csOnlineUser.ProvisionedPlan -contains 'MCOEV')) {
+            throw "User [$correlationValue] has no Teams Phone (Phone System/MCOEV) license"
         }
         else {
-            # If module is not imported, but available on disk then import
-            if (Get-Module -ListAvailable -Verbose:$false | Where-Object { $_.Name -eq $ModuleName }) {
-                $module = Import-Module $ModuleName -Cmdlet $commands -Verbose:$false
-                Write-Verbose "Imported module [$ModuleName]"
+            $properties = $outputContext.Data.PSObject.Properties.Name
+            $correlatedAccount = $csOnlineUser | Select-Object -Property $properties
+            Write-Information  "User [$correlationValue] has a Teams Phone (Phone System/MCOEV) license"
+        }
+    }
+    else {
+        throw 'Correlation must be enabled for this connector'
+    }
+
+    if (@($correlatedAccount).Count -eq 0) {
+        $action = 'NotFound'
+    }
+    elseif (@($correlatedAccount).Count -eq 1) {
+        $action = 'CorrelateAccount'
+        $ChangeEnterpriseVoiceEnabled = ($correlatedAccount.EnterpriseVoiceEnabled -ne $actionContext.Data.EnterpriseVoiceEnabled)
+    }
+    elseif (@($correlatedAccount).Count -gt 1) {
+        throw "Multiple accounts found for person where $correlationField is [$correlationValue]"
+    }
+
+    # Process
+    switch ($action) {
+        'NotFound' {
+            # Throw error since creation of Teams-Voip accounts is not supported.
+            $action = 'CorrelateAccount'
+            throw 'Creation of MicrosoftTeams-Voip accounts is not supported. Please ensure the user receives a Teams Phone license.'
+            break
+        }
+
+        'CorrelateAccount' {
+            $auditMessage = "Correlated account [$($correlatedAccount.userPrincipalName)] on field [$($correlationField)] with value [$($correlationValue)]"
+
+            if ($actionContext.DryRun -eq $true) {
+                $auditMessage = "[DryRun] $auditMessage"
+                Write-Information $auditMessage
             }
-            else {
-                # If the module is not imported, not available and not in the online gallery then abort
-                throw "Module [$ModuleName] is not available. Please install the module using: Install-Module -Name [$ModuleName] -Force"
-            }
-        }
-    }
-    catch {
-        $ex = $PSItem
-        $errorMessage = Get-ErrorMessage -ErrorObject $ex
-
-        Write-Verbose "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
-        $auditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Error importing module [$ModuleName]. Error Message: $($errorMessage.AuditErrorMessage)"
-                IsError = $True
-            })
-
-        # Skip further actions, as this is a critical error
-        continue
-    }
-
-    # Connect to Microsoft Teams. More info on Microsoft docs: https://learn.microsoft.com/en-us/MicrosoftTeams/teams-powershell-application-authentication#:~:text=Connect%20using%20Access%20Tokens%3A
-    try {
-        # Create MS Graph access token
-        Write-Verbose "Creating MS Graph Access Token"
-
-        $baseUri = "https://login.microsoftonline.com/"
-        $authUri = $baseUri + "$microsoftEntraIDTenantId/oauth2/v2.0/token"
-        
-        $body = @{
-            grant_type    = "client_credentials"
-            client_id     = "$microsoftEntraIDAppID"
-            client_secret = "$microsoftEntraIDAppSecret"
-            scope         = "https://graph.microsoft.com/.default"
-        }
-
-        $graphTokenSplatParams = @{
-            Method          = "POST"
-            Uri             = $authUri
-            Body            = $body
-            ContentType     = "application/x-www-form-urlencoded"
-            UseBasicParsing = $true
-            Verbose         = $false
-            ErrorAction     = "Stop"
-        }
-        
-        $graphTokenResponse = Invoke-RestMethod @graphTokenSplatParams
-        $graphToken = $graphTokenResponse.access_token
-
-        Write-Verbose "Successfully created MS Graph Access Token"
-
-        # Create Skype and Teams Tenant Admin API access token
-        Write-Verbose "Creating Skype and Teams Tenant Admin API Access Token"
-
-        $baseUri = "https://login.microsoftonline.com/"
-        $authUri = $baseUri + "$microsoftEntraIDTenantId/oauth2/v2.0/token"
-        
-        $body = @{
-            grant_type    = "client_credentials"
-            client_id     = "$microsoftEntraIDAppID"
-            client_secret = "$microsoftEntraIDAppSecret"
-            scope         = "48ac35b8-9aa8-4d74-927d-1f4a14a0b239/.default"
-        }
-        
-        $teamsTokenSplatParams = @{
-            Method          = "POST"
-            Uri             = $authUri
-            Body            = $body
-            ContentType     = "application/x-www-form-urlencoded"
-            UseBasicParsing = $true
-            Verbose         = $false
-            ErrorAction     = "Stop"
-        }
-
-        $teamsTokenResponse = Invoke-RestMethod @teamsTokenSplatParams
-        $teamsToken = $teamsTokenResponse.access_token
-
-        Write-Verbose "Successfully created Skype and Teams Tenant Admin API Access Token"
-
-        # Connect to Microsoft Teams in an unattended scripting scenario using an access token.
-        Write-Verbose "Connecting to Microsoft Teams"
-
-        $connectTeamsSplatParams = @{
-            AccessTokens = @("$graphToken", "$teamsToken")
-            Verbose      = $false
-            ErrorAction  = "Stop"
-        }
-
-        $teamsSession = Connect-MicrosoftTeams @connectTeamsSplatParams
-        
-        Write-Verbose "Successfully connected to Microsoft Teams"
-    }
-    catch {
-        $ex = $PSItem
-        $errorMessage = Get-ErrorMessage -ErrorObject $ex
-
-        Write-Verbose "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
-        $auditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Error connecting to Microsoft Teams. Error Message: $($errorMessage.AuditErrorMessage)"
-                IsError = $True
-            })
-
-        # Skip further actions, as this is a critical error
-        continue
-    }
-    
-    # Get Current Phone Number Assignment of Microsoft Teams User. More info on Microsoft docs: https://learn.microsoft.com/en-us/powershell/module/teams/get-csphonenumberassignment?view=teams-ps
-    try {
-        Write-Verbose "Querying MS Teams Phonenumber Assignment where [AssignedPstnTargetId] = [$($account.Identity)] and [NumberType] = [$($account.PhoneNumberType)]"
-        
-        $getPhonenumberAssignmentSplatParams = @{
-            AssignedPstnTargetId = $account.Identity
-            NumberType           = $account.PhoneNumberType
-            Verbose              = $false
-            ErrorAction          = "Stop"
-        } 
-
-        $currentPhonenumberAssignment = Get-CsPhoneNumberAssignment @getPhonenumberAssignmentSplatParams
-
-        if (($currentPhonenumberAssignment | Measure-Object).Count -eq 0) {
-            Write-Verbose "No MS Teams Phonenumber Assignment found where [AssignedPstnTargetId] = [$($account.Identity)] and [NumberType] = [$($account.PhoneNumberType)]" 
-        }
-
-        Write-Verbose "Successfully queried MS Teams Phonenumber Assignment where [AssignedPstnTargetId] = [$($account.Identity)] and [NumberType] = [$($account.PhoneNumberType)]. Result count: $(($currentPhonenumberAssignment | Measure-Object).Count)"
-    }
-    catch { 
-        $ex = $PSItem
-        $errorMessage = Get-ErrorMessage -ErrorObject $ex
-
-        Write-Verbose "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
-        $auditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Error querying MS Teams Phonenumber Assignment where [AssignedPstnTargetId] = [$($account.Identity)] and [NumberType] = [$($account.PhoneNumberType)]. Error Message: $($errorMessage.AuditErrorMessage)"
-                IsError = $True
-            })
-    }
-
-    # Check if update is required
-    try {
-        Write-Verbose "Calculating changes"
-
-        # Create previous account object to compare current data with specified account data
-        $previousAccount = [PSCustomObject]@{
-            'PhoneNumber' = $currentPhonenumberAssignment.TelephoneNumber
-        }
-        
-        # Calculate changes between current data and provided data
-        $splatCompareProperties = @{
-            ReferenceObject  = @($previousAccount.PSObject.Properties | Where-Object { $_.Name -in $updateAccountFields }) # Only select the properties to update
-            DifferenceObject = @($account.PSObject.Properties | Where-Object { $_.Name -in $updateAccountFields }) # Only select the properties to update
-        }
-        $changedProperties = $null
-        $changedProperties = (Compare-Object @splatCompareProperties -PassThru)
-        $oldProperties = $changedProperties.Where( { $_.SideIndicator -eq '<=' })
-        $newProperties = $changedProperties.Where( { $_.SideIndicator -eq '=>' })
-
-        if (($newProperties | Measure-Object).Count -ge 1) {
-            Write-Verbose "Changed properties: $($changedProperties | ConvertTo-Json)"
-
-            $updateAction = 'Update'
-        }
-        else {
-            Write-Verbose "No changed properties"
-
-            $updateAction = 'NoChanges'
-        }
-
-        Write-Verbose "Successfully calculated changes"
-    }
-    catch {
-        $ex = $PSItem
-        $errorMessage = Get-ErrorMessage -ErrorObject $ex
-
-        Write-Verbose "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
-        $auditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Error calculating changes. Error Message: $($errorMessage.AuditErrorMessage)"
-                IsError = $True
-            })
-
-        # Skip further actions, as this is a critical error
-        continue
-    }
-
-    switch ($updateAction) {
-        'Update' {
-            if (-not[String]::IsNullOrEmpty($currentPhonenumberAssignment.TelephoneNumber) -and $OnlySetPhoneNumberWhenEmpty -eq $true) {
-                $auditLogs.Add([PSCustomObject]@{
-                        # Action  = "" # Optional
-                        Message = "Skipped updating MS Teams Phonenumber Assignment where [NumberType] = [$($account.PhoneNumberType)] for [$($account.Identity)]. Reason: Configured to only update MS Teams Phonenumber Assignment when empty. Old value: [$($previousAccount.PhoneNumber)]. New value: [$($account.PhoneNumber)]"
-                        IsError = $false
-                    })
-                
-                break
-            }
-            else {
-                try {
-                    if (-not($dryRun -eq $true)) {
-                        Write-Verbose "Updating MS Teams Phonenumber Assignment where [NumberType] = [$($account.PhoneNumberType)] for [$($account.Identity)]. Old value: [$($previousAccount.PhoneNumber)]. New value: [$($account.PhoneNumber)]"
-                    
-                        $setPhonenumberAssignmentSplatParams = @{
-                            Identity        = $account.Identity
-                            PhoneNumber     = $account.PhoneNumber
-                            PhoneNumberType = $account.PhoneNumberType
-                            Verbose         = $false
-                            ErrorAction     = "Stop"
-                        }
-            
-                        $updatePhonenumberAssignment = Set-CsPhoneNumberAssignment @setPhonenumberAssignmentSplatParams
-
-                        $auditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "Successfully updated MS Teams Phonenumber Assignment where [NumberType] = [$($account.PhoneNumberType)] for [$($account.Identity)]. Old value: [$($previousAccount.PhoneNumber)]. New value: [$($account.PhoneNumber)]"
-                                IsError = $false
-                            })
-                    }
-                    else {
-                        $auditLogs.Add([PSCustomObject]@{
-                                # Action  = "" # Optional
-                                Message = "DryRun: Would update MS Teams Phonenumber Assignment where [NumberType] = [$($account.PhoneNumberType)] for [$($account.Identity)]. Old value: [$($previousAccount.PhoneNumber)]. New value: [$($account.PhoneNumber)]"
-                                IsError = $false
-                            })
-                    }
-                }
-                catch { 
-                    $ex = $PSItem
-                    $errorMessage = Get-ErrorMessage -ErrorObject $ex
-        
-                    Write-Verbose "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($errorMessage.VerboseErrorMessage)"
-                    $auditLogs.Add([PSCustomObject]@{
-                            # Action  = "" # Optional
-                            Message = "Error updating MS Teams Phonenumber Assignment where [NumberType] = [$($account.PhoneNumberType)] for [$($account.Identity)]. Old value: [$($previousAccount.PhoneNumber)]. New value: [$($account.PhoneNumber)]. Error Message: $($errorMessage.AuditErrorMessage)"
-                            IsError = $True
-                        })
-                }
-
-                break
-            }
-        }
-        'NoChanges' {
-            $auditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = "Skipped updating MS Teams Phonenumber Assignment where [NumberType] = [$($account.PhoneNumberType)] for [$($account.Identity)]. Reason: No changes. Old value: [$($previousAccount.PhoneNumber)]. New value: [$($account.PhoneNumber)]"
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Action  = $action
+                    Message = $auditMessage
                     IsError = $false
                 })
-        
+
+            $action = 'UpdateAccount'
+            if ($ChangeEnterpriseVoiceEnabled) {
+                $actionMessage = "Setting Enterprise Voice to [$($actionContext.Data.EnterpriseVoiceEnabled)] for [$($correlatedAccount.userPrincipalName)]"
+                $auditMessage = "Enterprise Voice set to [$($actionContext.Data.EnterpriseVoiceEnabled)] for [$($correlatedAccount.userPrincipalName)]"
+
+                if (-not($actionContext.DryRun -eq $true)) {
+                    Write-Information $actionMessage
+                    $null = Set-CsPhoneNumberAssignment -Identity $correlatedAccount.Identity -EnterpriseVoiceEnabled ([bool]::Parse($actionContext.Data.EnterpriseVoiceEnabled)) -ErrorAction Stop
+                }
+                else {
+                    $auditMessage = "[DryRun] $auditMessage"
+                    Write-Information $auditMessage
+                }
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = $action
+                        Message = $auditMessage
+                        IsError = $false
+                    })
+            }
+
+            $correlatedAccount.EnterpriseVoiceEnabled = $actionContext.Data.EnterpriseVoiceEnabled # Make sure case sensitivity is correct
+            $outputContext.Data = $correlatedAccount
+
+            $outputContext.Data.CallingLineIdentity = $correlatedAccount.CallingLineIdentity.Name
+            $outputContext.AccountReference = $correlatedAccount.Identity
+            $outputContext.AccountCorrelated = $true
             break
         }
     }
 
-    # Define ExportData with account fields and correlation property 
-    $exportData = $account.PsObject.Copy() | Select-Object $storeAccountFields
-    # # Add correlation property to exportdata - Outcommented, as there is no correlation as there is no command to get the Teams User
-    # $exportData | Add-Member -MemberType NoteProperty -Name $correlationProperty -Value $correlationValue -Force
-    # Add aRef to exportdata
-    $exportData | Add-Member -MemberType NoteProperty -Name "AccountReference" -Value $aRef -Force
+    $outputContext.success = $true
 }
-finally {
-    # Check if auditLogs contains errors, if no errors are found, set success to true
-    if (-NOT($auditLogs.IsError -contains $true)) {
-        $success = $true
+catch {
+    $outputContext.success = $false
+    $ex = $PSItem
+    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-MicrosoftTeams-VoipError -ErrorObject $ex
+        $auditMessage = "Error in action: $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
-
-    # Send results
-    $result = [PSCustomObject]@{
-        Success          = $success
-        AccountReference = $aRef
-        AuditLogs        = $auditLogs
-        Account          = $account
-
-        # Optionally return data for use in other systems
-        ExportData       = $exportData
+    else {
+        $auditMessage = "Error in action: $($actionMessage). Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-
-    Write-Output ($result | ConvertTo-Json -Depth 10)
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Action  = $action
+            Message = $auditMessage
+            IsError = $true
+        })
 }
