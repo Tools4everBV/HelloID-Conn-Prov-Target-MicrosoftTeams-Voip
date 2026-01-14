@@ -59,7 +59,6 @@ function Resolve-MicrosoftTeams-VoipError {
         Write-Output $httpErrorObj
     }
 }
-
 function Import-ModuleIfNeeded {
     [CmdletBinding()]
     param(

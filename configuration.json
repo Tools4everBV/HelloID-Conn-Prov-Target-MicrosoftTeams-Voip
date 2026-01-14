@@ -22,17 +22,6 @@
     "type": "input"
   },
   {
-    "defaultValue": "",
-    "key": "AppSecret",
-    "templateOptions": {
-      "label": "App Registration Client Secret",
-      "placeholder": "3lib1234NwDvx.6abc98M._r0yz_7h_B34",
-      "required": true,
-      "type": "password"
-    },
-    "type": "input"
-  },
-  {
     "key": "AppCertificateBase64String",
     "type": "input",
     "defaultValue": "",

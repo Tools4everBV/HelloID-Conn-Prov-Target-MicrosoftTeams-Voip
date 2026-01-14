@@ -44,6 +44,7 @@ _HelloID-Conn-Prov-Target-MicrosoftTeams-Voip_ is a _target_ connector that mana
 This connector enables automatic provisioning and management of Teams telephony features for users within your organization. It correlates existing Microsoft Teams users (based on their UPN or other identifiers) and manages their calling line identity (CallingLineIdentity) based on department information and Enterprise Voice settings.
 
 **Key functionalities:**
+
 - **Correlation-based**: The connector correlates with existing Microsoft Teams users that have a Teams Phone (Phone System/MCOEV) license assigned
 - **Calling Line Identity Management**: Automatically assigns and updates the appropriate CallingLineIdentity policy based on the user's department ID
 - **Enterprise Voice Control**: Manages the EnterpriseVoiceEnabled setting for users
@@ -129,9 +130,9 @@ The following settings are required to connect to Microsoft Teams PowerShell.
 
 | Setting                          | Description                                                                        | Mandatory |
 | -------------------------------- | ---------------------------------------------------------------------------------- | --------- |
-| TenantID                         | The Azure AD Directory (tenant) ID where the App Registration is located          | Yes       |
-| AppId                            | The Application (client) ID of the Azure AD App Registration                       | Yes       |
-| AppCertificateBase64String       | The Base64 encoded certificate (PFX/PKCS#12) with private key                     | Yes       |
+| TenantID                         | The Entra ID tenant ID where the App Registration is located                       | Yes       |
+| AppId                            | The Application (client) ID of the Entra ID App Registration                       | Yes       |
+| AppCertificateBase64String       | The Base64 encoded certificate (PFX/PKCS#12) with private key                      | Yes       |
 | AppCertificatePassword           | The password for the certificate                                                   | Yes       |
 
 ### Correlation configuration
@@ -161,6 +162,7 @@ The field mapping can be imported by using the _fieldMapping.json_ file.
 This connector is inherently complex due to the nature of Microsoft Teams policy management:
 
 **Why Customization is Required:**
+
 - **Single Policy Assignment**: Teams policies (such as CallingLineIdentity, VoiceRoutingPolicy, etc.) can only be assigned once to a user. Unlike traditional HelloID permissions that can be granted and revoked independently, these policies represent a single configuration state.
 - **No Permission Model**: Because policies cannot be managed as separate permissions, all policy logic must be implemented directly in the create and update scripts.
 - **Customer-Specific Requirements**: Every organization has unique telephony requirements, routing rules, number ranges, and business logic that need to be reflected in the connector implementation.
@@ -168,6 +170,7 @@ This connector is inherently complex due to the nature of Microsoft Teams policy
 **Framework Approach:**
 
 The connector in the main branch provides a framework that handles:
+
 - Microsoft Teams authentication and connection management
 - User correlation and validation
 - Teams Phone license verification
@@ -175,6 +178,7 @@ The connector in the main branch provides a framework that handles:
 - Error handling and logging
 
 You can extend this framework by adding:
+
 - Additional policy types (VoiceRoutingPolicy, TenantDialPlan, etc.)
 - Phone number assignment logic
 - Integration with external systems (databases, other APIs)
@@ -184,6 +188,7 @@ You can extend this framework by adding:
 **Implementation Planning:**
 
 When implementing this connector, plan for:
+
 - Requirements gathering session with the customer to understand their Teams telephony setup
 - Mapping customer-specific policies to HelloID business rules
 - Custom script development and testing
@@ -194,11 +199,13 @@ When implementing this connector, plan for:
 The connector maps CallingLineIdentity policies to users based on their department ID. The CallingLineIdentity policies in Microsoft Teams must have their **Description** field set to match the department ID from your source system.
 
 **Example:**
+
 - If a user has `DepartmentId = "DEPT001"` in their HelloID account data
 - The connector will look up a CallingLineIdentity policy where `Description = "DEPT001"`
 - This CallingLineIdentity will then be assigned to the user
 
-**Important:** 
+**Important:**
+
 - Each department ID must have exactly one matching CallingLineIdentity policy
 - The connector will throw an error if no matching policy is found or if multiple policies match the same department ID
 - Make sure CallingLineIdentity policies are configured in Microsoft Teams before provisioning users
@@ -206,6 +213,7 @@ The connector maps CallingLineIdentity policies to users based on their departme
 ### Teams Phone License Requirement
 
 The connector validates that users have a Teams Phone System license (feature type `PhoneSystem` or provisioned plan `MCOEV`) before making any changes. If a user doesn't have this license:
+
 - During correlation (create action): The connector will throw an error
 - During update: The connector will log a warning but continue processing
 
@@ -218,6 +226,7 @@ The `EnterpriseVoiceEnabled` property controls whether a user can make and recei
 ### Certificate-Based Authentication
 
 The connector uses certificate-based authentication for connecting to Microsoft Teams PowerShell. The certificate is:
+
 - Provided as a Base64 encoded string (PFX/PKCS#12 format)
 - Temporarily loaded into the CurrentUser certificate store during execution
 - Used for authenticating the PowerShell session with the App Registration credentials
@@ -258,8 +267,8 @@ This connector uses Microsoft Teams PowerShell cmdlets rather than direct API ca
 > _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems.html) pages_.
 
 > [!TIP]
->  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com)_.
+> _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com)_.
 
 ## HelloID docs
 
-The official HelloID documentation can be found at: https://docs.helloid.com/
+The official HelloID documentation can be found at: <https://docs.helloid.com/>
