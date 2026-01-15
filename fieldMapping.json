@@ -1,0 +1,115 @@
+{
+  "Version": "v1",
+  "MappingFields": [
+    {
+      "Name": "CallingLineIdentity",
+      "Description": "Sets the Calling Line Identity policy for the user, which determines the caller ID shown during outbound calls.\n\nThis field uses a None mapping, as the value is determined dynamically based on the department’s ExternalID (OU code) and is not written back to the target system.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Update",
+            "Create"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "DisplayName",
+      "Description": "Retrieves the user’s display name from Microsoft Teams.\nThis field uses a None mapping and is read-only; the value is not written back to the target system.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "\"\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "Identity",
+      "Description": "[Required] The unique identifier for the user. Read-only. Used as the AccountReference in HelloID.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "null",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "DepartmentId",
+      "Description": "[Required] Looks up the Calling Line Identity policy and assigns it based on the department’s ExternalID (Organizational Unit code, OU). The matching number is stored in the Description field of the policy.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Update"
+          ],
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Department.ExternalId\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": false
+        }
+      ]
+    },
+    {
+      "Name": "EnterpriseVoiceEnabled",
+      "Description": "Indicates whether Enterprise Voice is enabled for the user. When set to True, the user is enabled for calling functionality in Microsoft Teams (VoIP).",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create",
+            "Update"
+          ],
+          "MappingMode": "Fixed",
+          "Value": "\"True\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    },
+    {
+      "Name": "UserPrincipalName",
+      "Description": "[Required] The user principal name (UPN) of the user. An Internet-style sign-in name in the format alias@domain, where the domain must be one of the tenant’s verified domains.\nBy convention, this corresponds to the user’s email address.\nAllowed characters: A–Z, a–z, 0–9, ' . - _ ! # ^ ~ (no accents).",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create"
+          ],
+          "MappingMode": "Complex",
+          "Value": "\"function getUserPrincipalName() {\\r\\n    let userPrincipalName = '';\\r\\n\\r\\n    if (typeof Person.Accounts.MicrosoftActiveDirectory.userPrincipalName !== 'undefined' && Person.Accounts.MicrosoftActiveDirectory.userPrincipalName) {\\r\\n        userPrincipalName = Person.Accounts.MicrosoftActiveDirectory.userPrincipalName;\\r\\n    }\\r\\n\\r\\n    return userPrincipalName;\\r\\n}\\r\\n\\r\\ngetUserPrincipalName()\"",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        },
+        {
+          "MapForActions": [
+            "Update"
+          ],
+          "MappingMode": "None",
+          "Value": "null",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
+    }
+  ],
+  "UniqueFieldNames": []
+}

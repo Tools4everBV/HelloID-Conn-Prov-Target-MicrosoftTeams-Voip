@@ -1,57 +1,46 @@
 [
-    {
-        "key": "MicrosoftEntraIDTenantId",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-            "label": "Microsoft Entra ID Tenant ID",
-            "placeholder": "1234567-2538-4922-80e2-b890abcde",
-            "description": "The ID of the Tenant in Microsoft Entra ID",
-            "required": true
-        }
+  {
+    "defaultValue": "",
+    "key": "TenantID",
+    "templateOptions": {
+      "description": "",
+      "label": "App Registration Directory (tenant) ID",
+      "placeholder": "615g75e2-0v74-4a3c-6gaf-241t1q4m7f54",
+      "required": true
     },
-    {
-        "key": "MicrosoftEntraIDAppId",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-            "label": "Microsoft Entra ID App ID",
-            "placeholder": "1234567-2538-4922-80e2-b890abcde",
-            "description": "The ID of the App Registration in Microsoft Entra ID with the Microsoft Teams permissions to the specfied organization",
-            "required": true
-        }
+    "type": "input"
+  },
+  {
+    "defaultValue": "",
+    "key": "AppId",
+    "templateOptions": {
+      "description": "",
+      "label": "App Registration Application (client) ID",
+      "placeholder": "9c12a9b1-34c5-678d-ac34-8a890100d46d",
+      "required": true
     },
-    {
-        "key": "MicrosoftEntraIDAppSecret",
-        "type": "input",
-        "defaultValue": "",
-        "templateOptions": {
-            "label": "Microsoft Entra ID App Secret",
-            "type": "password",
-            "placeholder": "1234567-2538-4922-80e2-b890abcde",
-            "description": "The Secret of the App Registration in Microsoft Entra ID with the Microsoft Teams permissions to the specfied organization",
-            "required": true
-        }
-    },
-    {
-        "key": "OnlySetPhoneNumberWhenEmpty",
-        "type": "checkbox",
-        "defaultValue": true,
-        "templateOptions": {
-            "label": "Only Set Phone Number When Empty",
-            "placeholder": "1234567-2538-4922-80e2-b890abcde",
-            "description": "When toggled, the Phone Number will only be set if there currently is no value set",
-            "required": false
-        }
-    },
-    {
-        "key": "isDebug",
-        "type": "checkbox",
-        "defaultValue": false,
-        "templateOptions": {
-            "label": "Toggle debug logging",
-            "description": "When toggled, debug logging will be displayed",
-            "required": false
-        }
+    "type": "input"
+  },
+  {
+    "key": "AppCertificateBase64String",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "App Registration Certificate Base 64 String",
+      "type": "password",
+      "placeholder": "WFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFg==",
+      "required": true
     }
+  },
+  {
+    "key": "AppCertificatePassword",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "App Registration Certificate Password",
+      "type": "password",
+      "placeholder": "P@ssw0rd!",
+      "required": true
+    }
+  }
 ]
